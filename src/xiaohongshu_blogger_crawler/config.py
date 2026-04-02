@@ -62,6 +62,11 @@ class Settings:
     )
     search_source: str = os.getenv("XHS_SEARCH_SOURCE", "web_explore_feed")
     batch_txt_filename: str = os.getenv("XHS_BATCH_TXT_FILENAME", "blogger_search_results.txt")
+    query_interval_min: float = float(os.getenv("XHS_QUERY_INTERVAL_MIN", "3"))
+    query_interval_max: float = float(os.getenv("XHS_QUERY_INTERVAL_MAX", "10"))
+    batch_pause_every: int = int(os.getenv("XHS_BATCH_PAUSE_EVERY", "10"))
+    batch_pause_min: float = float(os.getenv("XHS_BATCH_PAUSE_MIN", "60"))
+    batch_pause_max: float = float(os.getenv("XHS_BATCH_PAUSE_MAX", "180"))
 
     def blogger_profile_url(self, blogger_id: str) -> str:
         clean_id = blogger_id.strip()
