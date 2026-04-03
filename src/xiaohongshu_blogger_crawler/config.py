@@ -67,6 +67,7 @@ class Settings:
     batch_pause_every: int = int(os.getenv("XHS_BATCH_PAUSE_EVERY", "10"))
     batch_pause_min: float = float(os.getenv("XHS_BATCH_PAUSE_MIN", "60"))
     batch_pause_max: float = float(os.getenv("XHS_BATCH_PAUSE_MAX", "180"))
+    api_token: str = os.getenv("REQ_API_TOKEN", "")
 
     def blogger_profile_url(self, blogger_id: str) -> str:
         clean_id = blogger_id.strip()

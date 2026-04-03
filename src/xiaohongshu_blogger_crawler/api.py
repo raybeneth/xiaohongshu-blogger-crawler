@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+import asyncio
+import dataclasses
+import logging
+import random
+from typing import List
 
+from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field
 from xiaohongshu_blogger_crawler.config import settings
+from xiaohongshu_blogger_crawler.models.search_result import BloggerSearchResult
 from xiaohongshu_blogger_crawler.services.crawler_service import CrawlerService
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="小红书达人查询", version="0.1.0")
 
@@ -174,9 +183,91 @@ async def index() -> HTMLResponse:
     return HTMLResponse(content=_HTML)
 
 
-@app.get("/api/search")
+class CrawlerTaskHeaders(BaseModel):
+    cookie: str = Field(..., description="Cookie 字符串")
+    xs: str = Field(..., description="X-S 签名")
+    xt: str = Field(..., description="X-T 时间戳")
+    xs_common: str = Field(..., alias="xs-common", description="X-S-Common 公共签名")
+
+    model_config = {"populate_by_name": True}
+
+
+class CreateCrawlerTaskRequest(BaseModel):
+    nick_names: list[str] = Field(..., max_length=5, description="达人昵称集合")
+    headers: CrawlerTaskHeaders = Field(..., description="请求头信息（含 Cookie、xs、xt、xs-common）")
+
+
+class CreateCrawlerTaskResponse(BaseModel):
+    query_name: str = Field(description="查询名称")
+    status: str = Field(description="查询结果状态为 NO_FOUND / FOUND")
+    matched_name: str = Field(description="匹配名称")
+    red_id: str = Field(description="红书号")
+    blogger_id: str = Field( description="博主ID")
+    avatar_url: str = Field(description="博主头像")
+    profile_url: str = Field(description="主页地址")
+    followers: int = Field(description="粉丝数")
+    notes: int = Field(description="笔记数")
+    profession: str = Field(description="专业类型")
+    official_verified: bool = Field(description="是否官方认证")
+    update_event: str = Field(description="更新时间")
+
+def _to_response(result: BloggerSearchResult) -> CreateCrawlerTaskResponse:
+    return CreateCrawlerTaskResponse(
+        query_name=result.query_name,
+        status="FOUND" if result.is_found else "NOT_FOUND",
+        matched_name=result.matched_name or "",
+        red_id=result.red_id or "",
+        blogger_id=result.blogger_id or "",
+        avatar_url=result.avatar_url or "",
+        profile_url=result.profile_url or "",
+        followers=result.followers or 0,
+        notes=result.notes or 0,
+        profession=result.profession or "",
+        official_verified=result.official_verified or False,
+        update_event=result.update_time or "",
+    )
+
+
+@app.post("/api/batch_query")
+async def batch_query(
+    request: CreateCrawlerTaskRequest,
+    x_token: str = Header(..., alias="X-Token", description="API 鉴权 Token"),
+) -> List[CreateCrawlerTaskResponse]:
+    """
+    批量实时爬取达人信息
+    达人数一次最多支持查询5条，且每条达人之间有查询等待时间（随机2-6s），单次查询最快也要10s才能返回，调用方需要合理设置超时时间
+    避免频繁超时
+    """
+    if not settings.api_token or x_token != settings.api_token:
+        raise HTTPException(status_code=401, detail="Token 无效或未配置")
+
+    req_settings = dataclasses.replace(
+        settings,
+        cookie=request.headers.cookie,
+        xs=request.headers.xs,
+        xt=request.headers.xt,
+        xs_common=request.headers.xs_common,
+    )
+    # 这里的dataclass会将settings设置为新的对象返回，不会存在线程安全问题。且Settings本身添加了frozen=True属性，不会被修改
+    service = CrawlerService(req_settings)
+    results: List[CreateCrawlerTaskResponse] = []
+
+    for index, nick_name in enumerate(request.nick_names):
+        result = await service.search_by_name(nick_name)
+        results.append(_to_response(result))
+        logger.info("[%d/%d] '%s': %s", index + 1, len(request.nick_names), nick_name, result.is_found)
+
+        if index < len(request.nick_names) - 1:
+            wait_seconds = random.uniform(2, 6)
+            logger.info("批量查询间隔等待 %.1fs", wait_seconds)
+            await asyncio.sleep(wait_seconds)
+
+    return results
+
+
+@app.get("/api/web_search")
 async def search_blogger(
-    nickname: str = Query(..., min_length=1, description="达人昵称"),
+        nickname: str = Query(..., min_length=1, description="达人昵称"),
 ) -> JSONResponse:
     service = CrawlerService(settings)
     result = await service.search_by_name(nickname)

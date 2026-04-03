@@ -13,6 +13,7 @@ authors = [
   { name = "Your Team" }
 ]
 dependencies = [
+  "apscheduler>=3.10.0,<4.0.0",
   "fastapi>=0.111.0,<1.0.0",
   "httpx>=0.27.0,<1.0.0",
   "pydantic>=2.8.0,<3.0.0",
