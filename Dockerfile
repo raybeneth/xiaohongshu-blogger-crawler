@@ -2,13 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装依赖（利用层缓存，先复制依赖声明文件）
+# 安装依赖
 COPY pyproject.toml ./
+COPY src/ ./src/
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .
 
-# 复制源码
-COPY src/ ./src/
 COPY .env.example ./.env.example
 
 # 数据目录
