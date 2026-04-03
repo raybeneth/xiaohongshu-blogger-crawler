@@ -238,6 +238,7 @@ async def batch_query(
     达人数一次最多支持查询5条，且每条达人之间有查询等待时间（随机2-6s），单次查询最快也要10s才能返回，调用方需要合理设置超时时间
     避免频繁超时
     """
+    logger.info("Request token is %s", x_token[:3] + "********" + x_token[-4:])
     if not settings.api_token or x_token != settings.api_token:
         raise HTTPException(status_code=401, detail="Token 无效或未配置")
 
