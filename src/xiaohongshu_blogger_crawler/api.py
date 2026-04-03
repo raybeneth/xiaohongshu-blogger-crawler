@@ -130,7 +130,7 @@ _HTML = """<!DOCTYPE html>
       resultEl.innerHTML = '<p class="loading">查询中，请稍候…</p>';
 
       try {
-        const resp = await fetch('/api/search?nickname=' + encodeURIComponent(nickname));
+        const resp = await fetch('/api/web_search?nickname=' + encodeURIComponent(nickname));
         const data = await resp.json();
 
         if (!resp.ok) {
