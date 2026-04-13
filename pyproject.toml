@@ -14,6 +14,7 @@ authors = [
 ]
 dependencies = [
   "apscheduler>=3.10.0,<4.0.0",
+  "playwright>=1.44.0,<2.0.0",
   "fastapi>=0.111.0,<1.0.0",
   "httpx>=0.27.0,<1.0.0",
   "pydantic>=2.8.0,<3.0.0",
