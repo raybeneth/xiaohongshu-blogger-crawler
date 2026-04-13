@@ -1,45 +1,96 @@
 """
 browser.interceptor
 -------------------
-打开无头浏览器，加载指定页面，拦截并打印所有接口返回内容。
-
-使用前请将 COOKIE_PLACEHOLDER 替换为真实 Cookie 字符串，
-或在调用 run() 时通过参数传入。
+自动模拟邮箱登录小红书灵感平台，登录成功后加载目标页面并拦截所有接口响应。
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import secrets
+import re
 
 from playwright.async_api import Page, Response, async_playwright
+
+from xiaohongshu_blogger_crawler.config import settings
 
 logger = logging.getLogger(__name__)
 
 # ── 配置区 ──────────────────────────────────────────────────────────────────
+
+LOGIN_URL = "https://idea.xiaohongshu.com/login"
 
 TARGET_URL = (
     "https://idea.xiaohongshu.com/idea/creativity/ContentInsight"
     "?id=213943758&startTime=2026-01-01&endTime=2026-03-31"
 )
 
-# 请将此处替换为真实 Cookie 字符串（key=value; key2=value2 格式）
-COOKIE_PLACEHOLDER = "abRequestId=9c4d84d4-4f39-5dd2-9bea-022d2f0083cb; a1=19abe436ef1ph0uirr4d8s6ttw4euce4sauytpu7o50000194913; webId=d44505455a44b0d71b1aacf90b50839d; gid=yjD8WJYK0jM8yj0Dd4qKd0U7iyUx873FF4fY7WlMK99E4v28d7Sd49888yj4jyq8SJSy8yJ2; ets=1775112281055; web_session=040069b8ba071d9f986b2bf6e13b4b7501f009; id_token=VjEAABg8PqSbzjlSybFMoW87j8FzSZ/pOyq/WbYNKRZfwvBlgtcQSq6qe2rVCypv0nV4NmWJILr3qIxiqIrUpMXCkjYoLUIo5D+tF5fH5Xc1jnYNBVTI41c+rCjAko1ne+rIqkNQ; xsecappid=ads-idea; customer-sso-sid=68c517628156458128310274kxzls6aeqms1j1wa; x-user-id-idea.xiaohongshu.com=69c36f372788000000000000; customerClientId=428706455041674; idea.outer.sso.token=AT-68c517628156458128146434dn7ntskrcniiwupc; access-token-idea.xiaohongshu.com=customer.idea.AT-68c517628156458128146434dn7ntskrcniiwupc; idea.outer.loginType.path=AT-68c517628156458128146434dn7ntskrcniiwupc; websectiga=10f9a40ba454a07755a08f27ef8194c53637eba4551cf9751c009d9afb564467; sec_poison_id=e4a27e6b-c1fa-40af-9bf8-075ceec9868e; acw_tc=0a0d037c17760736086428937e2147fed0d9bb9f471437e155b25b4dd35d40; loadts=1776073609104"
-# X_S_COMMON = "2UQAPsHC+aIjqArjwjHjNsQhPsHCH0rjNsQhPaHCH0c1PahFHjIj2eHjwjQgynEDJ74AHjIj2ePjwjQY8oPTynzSGaHVHdWFH0ijPahlN0HMHjIj2eLjwjHlwnbj8/cA+fpfPgmiPopkqdHF8eYA+dzF4AzS4n+S+o+Y4gSFqoL7JALIPeZIP/DFw/rAHjIj2eGjwjHjNsQh+UHCHjHVHdWhH0ija/PhqDYD87+xJ7mdag8Sq9zn494QcUT6aLpPJLQy+nLApd4G/B4BprShLA+jqg4bqD8S8gYDPBp3Jf+m2DMBnnEl4BYQyrkSzBE+zrTM4bQQPFTAnnRUpFYc4r4UGSGILeSg8DSkN9pgGA8SngbF2pbmqbmQPA4Sy9Ma+SbPtApQy/8A8BES8p+fqpSHqg4VPdbF+LHIzrQQ2sTczFzkN7+n4BTQ2BzA2op7q0zl4BSQyopYaLLA8/+Pp0mQPM8LaLP78/mM4BIUcLzTqFl98Lz/a7+/LoqMaLp9q9Sn4rkOqgqhcdp78SmI8BpLzS4OagWFprSk4/8yLo4ULopF+LS9JBbPGf4AP7bF2rSh8gPlpd4HanTMJLS3agSSyf4AnaRgpB4S+9p/qgzSNFc7qFz0qBSI8nzSngQr4rSe+fprpdqUaLpwqM+l4Bl1Jb+M/fkn4rS9J9p3qgcAGMi7qM86+B4Qzp+EanYbwsVEzbpQ4dkE+rDh/FSkGA4yLo4mag8kw/z6N7+r/BzA+Sm7pDSe+9p/8e4A+0SQJLSi+dPA2dQDLgpF+LSbJ7PAy0pS2rltqM8c49+Uwn4ALMmF2rSe/pmP89RS8dp7+gk1+g+gpd4Ua/+/2DDA2Sz6Lo4zGp87a9Rpzf4EzDRAzemO8gYM4BMQyFkSnnr6q7W6LLQQ4DRS+fLM8p4VLdQQ4DEAzob7arS3aBS7Lo4P/S8F+DDA/9pk4gzDaLpmq9Sl49lQysRSzobFcLEM4MmTpd4ragYT2rS9Lgmc8rSaaDl98/+l4BYQzLzYanVI8pSM4MbyGDplJ0ZIq9kSab+QzpSNLb87Lg+M4BbQyFkSpSm7zrTg87+3naRS+fQb2LSbafp38sRAy7bFq9Ec47bQcFkSLMm7yLSi+npncLSPagGM8pS6N9LILoz/aL+NqA8c4MGFJ9MlanYH8LSe89pn/BRSpB498pSj+fLlqg4yanY3yDS9a/pYqg48a/+cyDS3/fLlyflL2LHA8nTc49pQyLYYG7b7nrYDN9pgpApApMmFGAzM4rQQyM8xaLL3JfQn4BF3Lo47a/PIq9zCafpgqg4haM8FaLSe+b+wqgzTanTUyFYVyB8Q2BzAzrG9qAmD4fLALo4MaopF2LDAzfRQ2BRAPM8FnLSi4fLIzbcEaL+b8g+ypB4Q40Y7aLP78gYM4ApdpdzFLb8FpLShqpYQyrEAprrI8nSl4FEdL7Q+aL+i4rTn4o+j4gzaagYcnLDALn+QyM+VanWI8p8PP7+n/nlp/M872LS9GFpP4g4IGS87cLSb4fLl8SkQanSBygmD+9p/pdzVqS8FaFYTyrES8M8ranSza9bn4MkQyA4AyLSCGFShzaRjLo4ManTC8pkM4b4ALoz0anYgJLS9GD+QcAW3J7p7wLShLomQznpAygp7yfR0JebQyBSPaL+DqMSs/7+3Lo40ag8zJrSbzBYInpmBaL+CL94VaemQ4DbAnn498nkM47bQznRAPMmFaDSinDEQz/mAL7b7GFS9nnpApd4maLP9qM8CyrR04gzmqgbFtUHVHdWEH0iT+eHAw/GUPerVHdWlPsHCPsIj2erlH0ijJBSF8aQR"
+# 登录账号（替换为真实值）
+LOGIN_EMAIL = settings.link_x_account
+LOGIN_PASSWORD = settings.link_x_password
 
 # 只记录这些资源类型（排除 css/js/图片/字体等静态资源）
 _LOG_RESOURCE_TYPES = {"document", "xhr", "fetch", "websocket", "eventsource"}
 
 
+# ── 登录流程 ─────────────────────────────────────────────────────────────────
+
+async def _login(page: Page, email: str, password: str) -> None:
+    """
+    在登录页完成邮箱登录：
+    1. 加载登录页
+    2. 点击右上角「邮箱登录」切换入口
+    3. 填写邮箱与密码并提交
+    4. 等待跳转离开登录页，确认登录成功
+    """
+    logger.info("加载登录页: %s", LOGIN_URL)
+    await page.goto(LOGIN_URL, wait_until="domcontentloaded")
+
+    # 点击邮箱登录图标按钮（通过 SVG path 特征定位信封图标）
+    email_icon_btn = page.locator("button:has(svg path[d*='M18.3333 6H5.66667'])")
+    await email_icon_btn.wait_for(state="visible", timeout=10_000)
+    await email_icon_btn.click()
+    logger.info("已切换至邮箱登录")
+
+    # 等待邮箱输入框可见（切换面板有动画，需等渲染完成）
+    email_input = page.get_by_placeholder("请输入邮箱")
+    await email_input.wait_for(state="visible", timeout=10_000)
+
+    # 填写邮箱和密码
+    await email_input.fill(email)
+    await page.get_by_placeholder("请输入密码").fill(password)
+
+    # 勾选隐私协议
+    # 页面使用 d- 组件库，checkbox 通常是 .d-checkbox 包裹的自定义组件，
+    # 优先点击 wrapper，若找不到再降级到原生 input
+    privacy = page.locator(".d-checkbox").first
+    if await privacy.count() > 0:
+        if not await privacy.locator("input[type='checkbox']").is_checked():
+            await privacy.click()
+    else:
+        raw = page.locator("input[type='checkbox']").first
+        if not await raw.is_checked():
+            await raw.click()
+    logger.info("已勾选隐私协议")
+
+    # 点击登录按钮
+    await page.get_by_role("button", name="登录").click()
+    logger.info("已提交登录表单，等待跳转...")
+
+    # 等待离开登录页（最长 30 秒）
+    await page.wait_for_url(
+        lambda u: "/login" not in u,
+        timeout=30_000,
+    )
+    logger.info("登录成功，当前页面: %s", page.url)
+
+
 # ── 响应回调（Python 层拦截）────────────────────────────────────────────────
 
 async def _on_response(response: Response) -> None:
-    resource_type = response.request.resource_type
-    if resource_type not in _LOG_RESOURCE_TYPES:
-        return
-
     url = response.url
+    if not re.search(r"/api/idea/chartview/[^/?]+$", url.split("?")[0]):
+        return
     try:
         body_bytes = await response.body()
         try:
@@ -63,27 +114,25 @@ async def _on_response(response: Response) -> None:
 # ── 主入口 ───────────────────────────────────────────────────────────────────
 
 async def run(
-    url: str = TARGET_URL,
-    cookie: str = COOKIE_PLACEHOLDER,
-    headless: bool = True,
-    wait_until: str = "networkidle",
-    timeout: int = 60_000,
+        email: str = LOGIN_EMAIL,
+        password: str = LOGIN_PASSWORD,
+        target_url: str = TARGET_URL,
+        headless: bool = False,
+        wait_until: str = "networkidle",
+        timeout: int = 60_000,
 ) -> None:
     """
-    启动无头浏览器，加载 *url*，拦截所有接口响应并打印到控制台。
+    启动浏览器 → 邮箱登录 → 跳转目标页面 → 拦截并记录所有接口响应。
 
     Parameters
     ----------
-    url:        目标页面地址
-    cookie:     Cookie 字符串（key=value; key2=value2 格式）
-    headless:   是否无头模式
-    wait_until: 等待页面加载的事件（networkidle / load / domcontentloaded）
-    timeout:    页面加载超时（毫秒）
+    email:      登录邮箱
+    password:   登录密码
+    target_url: 登录成功后要加载的目标页面
+    headless:   是否无头模式（默认 False，方便调试）
+    wait_until: 目标页面加载等待事件
+    timeout:    目标页面加载超时（毫秒）
     """
-
-    if not cookie:
-        logger.warning("Cookie 为空，页面可能因未登录而无法加载数据。")
-
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=headless)
         context = await browser.new_context(
@@ -92,36 +141,38 @@ async def run(
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/146.0.0.0 Safari/537.36"
             ),
-            extra_http_headers={
-                # "x-s-common": X_S_COMMON,
-                "referer": url,
-                "x-b3-traceid": secrets.token_hex(8),
-                "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
-            },
+            extra_http_headers={"accept-language": "zh-CN,zh;q=0.9,en;q=0.8"},
             ignore_https_errors=True,
         )
 
-        # 将 Cookie 写入浏览器 Cookie 存储
-        # domain 用 .xiaohongshu.com（带点前缀），使所有子域（SSO、idea 等）均可携带，
-        # 避免跨子域重定向时因找不到 Cookie 而被 SSO 重新写入新 session 覆盖原值
-        parsed_cookies = [
-            {"name": k.strip(), "value": v.strip(), "domain": ".xiaohongshu.com", "path": "/"}
-            for part in cookie.split(";")
-            if "=" in part
-            for k, _, v in [part.strip().partition("=")]
-        ]
-        await context.add_cookies(parsed_cookies)
-
         page: Page = await context.new_page()
 
-        # Python 层拦截所有网络响应（含 xhr/fetch/document，过滤静态资源）
+        # 登录（登录过程不拦截接口，避免噪音）
+        await _login(page, email, password)
+
+        # 登录成功后再注册响应监听器
         page.on("response", _on_response)
 
-        logger.info("正在加载页面: %s", url)
+        # 跳转目标页面
+        logger.info("正在加载目标页面: %s", target_url)
+        await page.goto(target_url, wait_until=wait_until, timeout=timeout)
+        logger.info("目标页面加载完毕，开始依次点击统计卡片")
 
-        await page.goto(url, wait_until=wait_until, timeout=timeout)
+        # 等待统计卡片列表出现
+        cards = page.locator(".statistic-card-list .statistic-card-wrapper.could-selected")
+        await cards.first.wait_for(state="visible", timeout=30_000)
 
-        logger.info("页面加载完毕，所有接口响应已写入日志。")
+        total = await cards.count()
+        logger.info("共找到 %d 个统计卡片", total)
+
+        for i in range(total):
+            card = cards.nth(i)
+            title = await card.locator(".statistic-card-title").inner_text()
+            await card.click()
+            logger.info("[%d/%d] 已点击卡片「%s」，等待 20s 抓取数据...", i + 1, total, title)
+            await asyncio.sleep(20)
+
+        logger.info("所有卡片点击完毕，数据抓取结束。")
         await browser.close()
 
 
@@ -139,4 +190,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, handlers=[_handler])
 
     print(f"日志输出至: {log_path.resolve()}")
-    asyncio.run(run(headless=False))
+    asyncio.run(run())

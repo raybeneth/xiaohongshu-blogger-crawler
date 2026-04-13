@@ -69,6 +69,10 @@ class Settings:
     batch_pause_max: float = float(os.getenv("XHS_BATCH_PAUSE_MAX", "180"))
     api_token: str = os.getenv("REQ_API_TOKEN", "")
 
+    # website抓取配置账号
+    link_x_account = os.getenv("LINKX_ACCOUNT", "")
+    link_x_password = os.getenv("LINKX_PASSWORD", "")
+
     def blogger_profile_url(self, blogger_id: str) -> str:
         clean_id = blogger_id.strip()
         return f"{self.base_url.rstrip('/')}/user/profile/{clean_id}"
