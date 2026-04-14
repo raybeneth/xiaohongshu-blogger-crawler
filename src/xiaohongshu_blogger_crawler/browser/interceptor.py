@@ -159,21 +159,57 @@ async def run(
         logger.info("目标页面加载完毕，开始依次点击统计卡片")
 
         # 等待统计卡片列表出现
-        cards = page.locator(".statistic-card-list .statistic-card-wrapper.could-selected")
-        await cards.first.wait_for(state="visible", timeout=30_000)
+        # 页面上有两组 statistic-card-list：第一组是父卡片，第二组是子卡片
+        card_lists = page.locator(".statistic-card-list")
+        await card_lists.first.wait_for(state="visible", timeout=30_000)
 
-        total = await cards.count()
-        logger.info("共找到 %d 个统计卡片", total)
+        total_lists = await card_lists.count()
+        if total_lists < 2:
+            logger.warning("未找到两组卡片列表，仅找到 %d 组，按单层逻辑处理", total_lists)
+            parent_list = card_lists.first
+            child_list = None
+        else:
+            parent_list = card_lists.nth(0)
+            child_list = card_lists.nth(1)
 
-        for i in range(total):
-            card = cards.nth(i)
-            title = await card.locator(".statistic-card-title").inner_text()
-            await card.click()
-            logger.info("[%d/%d] 已点击卡片「%s」，等待 20s 抓取数据...", i + 1, total, title)
-            await asyncio.sleep(20)
+        parent_cards = parent_list.locator(".statistic-card-wrapper.could-selected")
+        parent_total = await parent_cards.count()
+        logger.info("共找到 %d 个父卡片", parent_total)
 
-        logger.info("所有卡片点击完毕，数据抓取结束。")
-        await browser.close()
+        child_cards = child_list.locator(".statistic-card-wrapper.could-selected") if child_list else None
+        child_total = await child_cards.count() if child_cards else 0
+        logger.info("共找到 %d 个子卡片", child_total)
+
+        for pi in range(parent_total):
+            parent_card = parent_cards.nth(pi)
+            parent_title = await parent_card.locator(".statistic-card-title").inner_text()
+            await parent_card.click()
+            logger.info(
+                "[父 %d/%d] 已点击父卡片「%s」，开始依次切换 %d 个子卡片（预计等待 %ds）...",
+                pi + 1, parent_total, parent_title, child_total, child_total * 30,
+            )
+
+            if child_total == 0:
+                await asyncio.sleep(30)
+                continue
+
+            for ci in range(child_total):
+                # 灵犀的页面渲染很卡很慢，等他渲染完毕再找卡片抓数据
+                await asyncio.sleep(30)
+                child_card = child_cards.nth(ci)
+                child_title = await child_card.locator(".statistic-card-title").inner_text()
+                await child_card.click()
+                logger.info(
+                    "  [子 %d/%d] 已点击子卡片「%s」，等待10s 抓取数据...",
+                    ci + 1, child_total, child_title,
+                )
+                # 抓取数据
+                await asyncio.sleep(10)
+
+            logger.info("[父 %d/%d] 父卡片「%s」下所有子卡片抓取完毕", pi + 1, parent_total, parent_title)
+
+        logger.info("所有父/子卡片点击完毕，数据抓取结束。")
+        # await browser.close()
 
 
 # ── 直接运行 ─────────────────────────────────────────────────────────────────
