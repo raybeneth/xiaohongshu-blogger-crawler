@@ -23,14 +23,10 @@ logger = logging.getLogger(__name__)
 
 LOGIN_URL = "https://idea.xiaohongshu.com/login"
 
-TARGET_URL = (
-    "https://idea.xiaohongshu.com/idea/creativity/ContentInsight"
-    "?id=213943758&startTime=2026-01-01&endTime=2026-03-31"
-)
-
 # 登录账号（替换为真实值）
 LOGIN_EMAIL = settings.link_x_account
 LOGIN_PASSWORD = settings.link_x_password
+TARGET_URL = settings.link_x_target
 
 # 只记录这些资源类型（排除 css/js/图片/字体等静态资源）
 _LOG_RESOURCE_TYPES = {"document", "xhr", "fetch", "websocket", "eventsource"}

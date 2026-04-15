@@ -13,11 +13,13 @@ playwright install chromium
 
 在 `interceptor.py` 顶部填写账号信息：
 
-| 变量 | 说明 |
-|---|---|
-| `LOGIN_EMAIL` | 登录邮箱 |
-| `LOGIN_PASSWORD` | 登录密码 |
-| `TARGET_URL` | 登录成功后跳转的目标页面 |
+| 变量                 | 说明              |
+|--------------------|-----------------|
+| `LINKX_ACCOUNT`    | 登录邮箱            |
+| `LINKX_PASSWORD`   | 登录密码            |
+| `LINKX_COOKIE`     | 灵犀登录Cookie      |
+| `LINKX_AUTO_LOGIN` | 是否开启自动登录（调试时关闭） |
+| `TARGET_URL`       | 登陆成功后的跳转页面      |
 
 ## 运行
 
@@ -25,12 +27,12 @@ playwright install chromium
 python -m xiaohongshu_blogger_crawler.browser.interceptor
 ```
 
-运行流程：
+自动登录运行流程：
 1. 弹出 Chromium 窗口，加载登录页
 2. 自动点击「邮箱登录」切换入口
 3. 填写邮箱和密码并提交
 4. 登录成功后自动跳转到 `TARGET_URL`
-5. 等待 120 秒（便于调试），期间所有接口响应写入日志
+5. 期间所有接口响应写入日志
 
 日志文件路径：`logs/browser_interceptor.log`
 

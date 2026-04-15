@@ -73,6 +73,7 @@ class Settings:
     # website抓取配置账号
     link_x_account = os.getenv("LINKX_ACCOUNT", "")
     link_x_password = os.getenv("LINKX_PASSWORD", "")
+    link_x_target = os.getenv("TARGET_URL", "")
     # 自动登录开关：True=模拟登录，False=使用 Cookie
     link_x_auto_login: bool = os.getenv("LINKX_AUTO_LOGIN", "true").strip().lower() in ("1", "true", "yes")
 
