@@ -58,8 +58,18 @@ MAIDAN_TAG_NAMES: tuple[str, ...] = (
 # 每个买点标签切换后等待抓取的秒数
 MAIDAN_TAG_WAIT_SECONDS: int = 20
 
-# 每个笔记类型筛选项切换后等待抓取的秒数
+# 每个笔记类型筛选项切换后等待页面刷新的秒数
 NOTE_TYPE_WAIT_SECONDS: int = 20
+
+# 「笔记类型」模块内「题材」下拉框的选项列表（第一个为默认选中）
+NOTE_TYPE_THEME_NAMES: tuple[str, ...] = (
+    "不限", "试色", "仿妆变装", "测评类", "好物合集", "单品推荐",
+    "经验教程", "选购攻略", "知识科普", "生活剧情", "情感话题",
+    "探店打卡", "问答类", "活动分享", "手工制作", "创意内容",
+    "新品预告", "采访类", "双品对比", "开箱",
+)
+# 每个题材选项选中后等待抓取的秒数
+NOTE_TYPE_THEME_WAIT_SECONDS: int = 15
 
 
 # ── 登录流程 ─────────────────────────────────────────────────────────────────
@@ -234,7 +244,7 @@ async def run(
 
         # 等待统计卡片列表出现
         # 页面上有两组 statistic-card-list：第一组是父卡片，第二组是子卡片
-        await asyncio.sleep(10)
+        await asyncio.sleep(20)
         card_lists = page.locator(".statistic-card-list")
         await card_lists.first.wait_for(state="visible", timeout=30_000)
 
@@ -244,7 +254,6 @@ async def run(
             return
 
         parent_list = card_lists.nth(0)
-        child_list = card_lists.nth(1)
 
         # 打印本次将处理的父/子卡片清单
         print(f"[父卡片] 共 {len(PARENT_CARD_NAMES)} 个：{list(PARENT_CARD_NAMES)}")
@@ -282,7 +291,7 @@ async def run(
             # 抓取「笔记类型」卡片（只受父卡片影响，筛选项与当前父卡片联动）
             await note_type_card_crawler(pi, parent_count, parent_name, filter_labels, page)
 
-            # 抓取子卡片信息（受父卡片影响）
+            # 抓取子卡片信息（受父卡片影响） - 暂时关闭进行调试
             await reasons_for_purchase_attr(pi, page, filter_labels, parent_count, filter_count,
                                             child_count, parent_name)
         print("\n所有父/子卡片点击完毕，数据抓取结束。")
@@ -425,35 +434,84 @@ async def note_type_card_crawler(
         pi + 1, parent_count, filter_labels,
     )
 
-    # 定位「笔记类型」卡片内的 segment 控件：
-    # 以 .title:has(span.tooltip-title:has-text("笔记类型")) 为锚点，
-    # 跳到其父级（卡片容器），再找同级的 .d-segment
-    note_type_segment = page.locator(
+    # 定位「笔记类型」模块容器（以 .title 为锚点，跳到父级）
+    note_type_module = page.locator(
         '.title:has(span.tooltip-title:has-text("笔记类型"))'
-    ).locator('xpath=..').locator('.d-segment').first
+    ).locator('xpath=..').first
+
+    # segment 筛选项控件，限定在模块内
+    note_type_segment = note_type_module.locator('.d-segment').first
+
+    # 「题材」下拉框，通过稳定的 field 属性定位，限定在模块内
+    theme_dropdown = note_type_module.locator('section[field="themes"] .d-select-wrapper')
+
+    theme_count = len(NOTE_TYPE_THEME_NAMES)
 
     for fi, filter_label in enumerate(filter_labels):
         if fi == 0:
             print(
                 f"    [父 {pi + 1}/{parent_count}][笔记类型][筛选 {fi + 1}/{filter_count}]"
-                f"「{filter_label}」默认选中，等待{NOTE_TYPE_WAIT_SECONDS}s 抓取数据..."
+                f"「{filter_label}」默认选中，开始遍历题材..."
             )
             logger.info(
-                "  [父 %d/%d][笔记类型][筛选 %d/%d]「%s」默认选中，等待%ds",
-                pi + 1, parent_count, fi + 1, filter_count, filter_label, NOTE_TYPE_WAIT_SECONDS,
+                "  [父 %d/%d][笔记类型][筛选 %d/%d]「%s」默认选中，开始遍历题材",
+                pi + 1, parent_count, fi + 1, filter_count, filter_label,
             )
         else:
             filter_item = note_type_segment.locator(f'.d-segment-item:has-text("{filter_label}")')
             await filter_item.click()
             print(
                 f"    [父 {pi + 1}/{parent_count}][笔记类型][筛选 {fi + 1}/{filter_count}]"
-                f"「{filter_label}」已切换，等待{NOTE_TYPE_WAIT_SECONDS}s 抓取数据..."
+                f"「{filter_label}」已切换，等待{NOTE_TYPE_WAIT_SECONDS}s 刷新后遍历题材..."
             )
             logger.info(
                 "  [父 %d/%d][笔记类型][筛选 %d/%d]「%s」已切换，等待%ds",
                 pi + 1, parent_count, fi + 1, filter_count, filter_label, NOTE_TYPE_WAIT_SECONDS,
             )
-        await asyncio.sleep(NOTE_TYPE_WAIT_SECONDS)
+            await asyncio.sleep(NOTE_TYPE_WAIT_SECONDS)
+
+        # 在当前筛选项下，逐个切换「题材」下拉框并抓取数据
+        for ti, theme_name in enumerate(NOTE_TYPE_THEME_NAMES):
+            if ti == 0:
+                # 「不限」默认选中，无需点击
+                print(
+                    f"      [父 {pi + 1}/{parent_count}][笔记类型][筛选 {fi + 1}/{filter_count}]"
+                    f"[题材 {ti + 1}/{theme_count}]「{theme_name}」默认选中，"
+                    f"等待{NOTE_TYPE_THEME_WAIT_SECONDS}s 抓取数据..."
+                )
+                logger.info(
+                    "  [父 %d/%d][笔记类型][筛选 %d/%d][题材 %d/%d]「%s」默认选中，等待%ds",
+                    pi + 1, parent_count, fi + 1, filter_count,
+                    ti + 1, theme_count, theme_name, NOTE_TYPE_THEME_WAIT_SECONDS,
+                )
+            else:
+                await theme_dropdown.click()
+                # 等弹出层（.d-options-wrapper）可见，再在弹出层内部定位选项，
+                # 避免匹配到 DOM 中始终存在但隐藏的那一套选项元素
+                popup = page.locator('.d-options-wrapper').last
+                await popup.wait_for(state="visible", timeout=5_000)
+                option = popup.locator(f'.d-option-content:has-text("{theme_name}")')
+                await option.click()
+                print(
+                    f"      [父 {pi + 1}/{parent_count}][笔记类型][筛选 {fi + 1}/{filter_count}]"
+                    f"[题材 {ti + 1}/{theme_count}]「{theme_name}」已选中，"
+                    f"等待{NOTE_TYPE_THEME_WAIT_SECONDS}s 抓取数据..."
+                )
+                logger.info(
+                    "  [父 %d/%d][笔记类型][筛选 %d/%d][题材 %d/%d]「%s」已选中，等待%ds",
+                    pi + 1, parent_count, fi + 1, filter_count,
+                    ti + 1, theme_count, theme_name, NOTE_TYPE_THEME_WAIT_SECONDS,
+                )
+            await asyncio.sleep(NOTE_TYPE_THEME_WAIT_SECONDS)
+
+        print(
+            f"    [父 {pi + 1}/{parent_count}][笔记类型][筛选 {fi + 1}/{filter_count}]"
+            f"「{filter_label}」所有题材抓取完毕"
+        )
+        logger.info(
+            "  [父 %d/%d][笔记类型][筛选 %d/%d]「%s」所有题材抓取完毕",
+            pi + 1, parent_count, fi + 1, filter_count, filter_label,
+        )
 
     print(f"  [父 {pi + 1}/{parent_count}][笔记类型] 所有筛选条件抓取完毕")
     logger.info("  [父 %d/%d][笔记类型] 所有筛选条件抓取完毕", pi + 1, parent_count)
