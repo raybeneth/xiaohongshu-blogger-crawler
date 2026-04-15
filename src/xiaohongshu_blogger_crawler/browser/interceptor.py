@@ -50,6 +50,14 @@ PARENT_FILTER_MAP: dict[str, tuple[str, str]] = {
     "互动量":      ("互动量",    "深度互动量"),
 }
 
+# 「买点」子卡片内的标签列表（第一个为默认选中，依次切换）
+MAIDAN_TAG_NAMES: tuple[str, ...] = (
+    "不限", "妆容风格", "使用体验", "肤质", "功效",
+    "颜色", "外观", "气味", "成分", "包装",
+)
+# 每个买点标签切换后等待抓取的秒数
+MAIDAN_TAG_WAIT_SECONDS: int = 20
+
 
 # ── 登录流程 ─────────────────────────────────────────────────────────────────
 
@@ -305,15 +313,20 @@ async def run(
                         f".statistic-card-wrapper:has(.statistic-card-title:has-text('{child_name}'))"
                     )
                     await child_card.click()
-                    print(
-                        f"    [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
-                        f"[子 {ci + 1}/{child_count}]「{child_name}」已点击，等待10s 抓取数据..."
-                    )
-                    logger.info(
-                        "  [父 %d/%d][筛选 %d/%d][子 %d/%d]「%s」已点击，等待10s 抓取数据...",
-                        pi + 1, parent_count, fi + 1, filter_count, ci + 1, child_count, child_name,
-                    )
-                    await asyncio.sleep(10)
+
+                    if child_name == "买点":
+                        await reasons_for_purchase_crawler(pi, ci, fi, filter_count, parent_count, child_count,
+                                                           child_name, page)
+                    else:
+                        print(
+                            f"    [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
+                            f"[子 {ci + 1}/{child_count}]「{child_name}」已点击，等待10s 抓取数据..."
+                        )
+                        logger.info(
+                            "  [父 %d/%d][筛选 %d/%d][子 %d/%d]「%s」已点击，等待10s 抓取数据...",
+                            pi + 1, parent_count, fi + 1, filter_count, ci + 1, child_count, child_name,
+                        )
+                        await asyncio.sleep(10)
 
                 print(
                     f"  [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
@@ -331,6 +344,47 @@ async def run(
         logger.info("所有父/子卡片点击完毕，数据抓取结束。")
         # await browser.close()
 
+
+async def reasons_for_purchase_crawler(pi, ci, fi, filter_count, parent_count, child_count, child_name, page) -> None:
+    # 「买点」需要依次切换内部标签（共 10 个），每个等待 15s 抓取数据
+    tag_count = len(MAIDAN_TAG_NAMES)
+    print(
+        f"    [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
+        f"[子 {ci + 1}/{child_count}]「{child_name}」已点击，"
+        f"开始遍历 {tag_count} 个买点标签..."
+    )
+    logger.info(
+        "  [父 %d/%d][筛选 %d/%d][子 %d/%d]「买点」已点击，开始遍历 %d 个标签",
+        pi + 1, parent_count, fi + 1, filter_count, ci + 1, child_count, tag_count,
+    )
+    # 等待买点标签区域渲染
+    await asyncio.sleep(10)
+    for ti, tag_name in enumerate(MAIDAN_TAG_NAMES):
+        if ti > 0:
+            # 按文字定位并点击标签（第一个"不限"默认已选中）
+            # 标签渲染为 <button class="d-button ...">，文字前后带有空白
+            tag_item = page.locator(f'button.d-button:has-text("{tag_name}")').first
+            await tag_item.click()
+        print(
+            f"      [买点标签 {ti + 1}/{tag_count}]「{tag_name}」"
+            f"{'默认选中' if ti == 0 else '已切换'}，"
+            f"等待{MAIDAN_TAG_WAIT_SECONDS}s 抓取数据..."
+        )
+        logger.info(
+            "  [买点标签 %d/%d]「%s」%s，等待%ds",
+            ti + 1, tag_count, tag_name,
+            "默认选中" if ti == 0 else "已切换",
+            MAIDAN_TAG_WAIT_SECONDS,
+        )
+        await asyncio.sleep(MAIDAN_TAG_WAIT_SECONDS)
+    print(
+        f"    [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
+        f"[子 {ci + 1}/{child_count}]「{child_name}」所有买点标签抓取完毕"
+    )
+    logger.info(
+        "  [父 %d/%d][筛选 %d/%d][子 %d/%d]「买点」所有标签抓取完毕",
+        pi + 1, parent_count, fi + 1, filter_count, ci + 1, child_count,
+    )
 
 # ── 直接运行 ─────────────────────────────────────────────────────────────────
 
