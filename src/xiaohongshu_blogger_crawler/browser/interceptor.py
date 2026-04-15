@@ -2,6 +2,9 @@
 browser.interceptor
 -------------------
 自动模拟邮箱登录小红书灵感平台，登录成功后加载目标页面并拦截所有接口响应。
+支持两种登录方式：
+  - 自动登录（LINKX_AUTO_LOGIN=true）：模拟邮箱登录
+  - Cookie 登录（LINKX_AUTO_LOGIN=false）：直接注入 XHS_COOKIE
 """
 from __future__ import annotations
 
@@ -10,7 +13,7 @@ import json
 import logging
 import re
 
-from playwright.async_api import Page, Response, async_playwright
+from playwright.async_api import BrowserContext, Page, Response, async_playwright
 
 from xiaohongshu_blogger_crawler.config import settings
 
@@ -31,6 +34,21 @@ LOGIN_PASSWORD = settings.link_x_password
 
 # 只记录这些资源类型（排除 css/js/图片/字体等静态资源）
 _LOG_RESOURCE_TYPES = {"document", "xhr", "fetch", "websocket", "eventsource"}
+
+# ── 卡片与筛选项配置 ─────────────────────────────────────────────────────────
+
+# 父卡片固定顺序（页面文字）
+PARENT_CARD_NAMES: tuple[str, ...] = ("有曝光笔记数", "阅读量", "互动量")
+
+# 子卡片固定顺序（页面文字）
+CHILD_CARD_NAMES: tuple[str, ...] = ("整体", "人群", "场景", "买点", "品类产品")
+
+# 每个父卡片对应的第一组筛选项（默认选中项在前）
+PARENT_FILTER_MAP: dict[str, tuple[str, str]] = {
+    "有曝光笔记数": ("有曝光笔记", "优质笔记数"),
+    "阅读量":      ("阅读量",    "深度阅读量"),
+    "互动量":      ("互动量",    "深度互动量"),
+}
 
 
 # ── 登录流程 ─────────────────────────────────────────────────────────────────
@@ -111,6 +129,38 @@ async def _on_response(response: Response) -> None:
         logger.warning("读取响应体失败 %s: %s", url, exc)
 
 
+# ── Cookie 注入 ──────────────────────────────────────────────────────────────
+
+def _parse_cookie_string(raw: str) -> list[dict]:
+    """将 'key=value; key2=value2' 格式的 Cookie 字符串解析为 Playwright 所需的列表。"""
+    cookies: list[dict] = []
+    for part in raw.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" in part:
+            name, _, value = part.partition("=")
+        else:
+            name, value = part, ""
+        cookies.append({
+            "name": name.strip(),
+            "value": value.strip(),
+            "domain": "idea.xiaohongshu.com",
+            "path": "/",
+        })
+    return cookies
+
+
+async def _inject_cookies(context: BrowserContext, cookie_str: str) -> None:
+    """将 Cookie 字符串注入到浏览器上下文。"""
+    cookies = _parse_cookie_string(cookie_str)
+    if not cookies:
+        logger.warning("Cookie 字符串为空，跳过注入")
+        return
+    await context.add_cookies(cookies)
+    logger.info("已注入 %d 个 Cookie（Cookie 登录模式）", len(cookies))
+
+
 # ── 主入口 ───────────────────────────────────────────────────────────────────
 
 async def run(
@@ -118,21 +168,26 @@ async def run(
         password: str = LOGIN_PASSWORD,
         target_url: str = TARGET_URL,
         headless: bool = False,
-        wait_until: str = "networkidle",
+        wait_until: str = "load",
         timeout: int = 60_000,
+        auto_login: bool | None = None,
 ) -> None:
     """
-    启动浏览器 → 邮箱登录 → 跳转目标页面 → 拦截并记录所有接口响应。
+    启动浏览器 → 登录（自动登录或 Cookie 注入）→ 跳转目标页面 → 拦截并记录所有接口响应。
 
     Parameters
     ----------
-    email:      登录邮箱
-    password:   登录密码
+    email:      登录邮箱（auto_login=True 时使用）
+    password:   登录密码（auto_login=True 时使用）
     target_url: 登录成功后要加载的目标页面
     headless:   是否无头模式（默认 False，方便调试）
     wait_until: 目标页面加载等待事件
     timeout:    目标页面加载超时（毫秒）
+    auto_login: 是否自动模拟登录；None 时读取 settings.link_x_auto_login
     """
+    if auto_login is None:
+        auto_login = settings.link_x_auto_login
+
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=headless)
         context = await browser.new_context(
@@ -147,8 +202,16 @@ async def run(
 
         page: Page = await context.new_page()
 
-        # 登录（登录过程不拦截接口，避免噪音）
-        await _login(page, email, password)
+        if auto_login:
+            # 自动模拟登录（登录过程不拦截接口，避免噪音）
+            logger.info("自动登录模式：开始模拟邮箱登录")
+            print("[登录模式] 自动模拟登录")
+            await _login(page, email, password)
+        else:
+            # Cookie 登录：注入 Cookie 后直接跳转目标页
+            logger.info("Cookie 登录模式：注入 Cookie 并直接跳转目标页")
+            print("[登录模式] Cookie 登录")
+            await _inject_cookies(context, settings.link_x_cookie)
 
         # 登录成功后再注册响应监听器
         page.on("response", _on_response)
@@ -160,54 +223,111 @@ async def run(
 
         # 等待统计卡片列表出现
         # 页面上有两组 statistic-card-list：第一组是父卡片，第二组是子卡片
+        await asyncio.sleep(10)
         card_lists = page.locator(".statistic-card-list")
         await card_lists.first.wait_for(state="visible", timeout=30_000)
 
         total_lists = await card_lists.count()
         if total_lists < 2:
-            logger.warning("未找到两组卡片列表，仅找到 %d 组，按单层逻辑处理", total_lists)
-            parent_list = card_lists.first
-            child_list = None
-        else:
-            parent_list = card_lists.nth(0)
-            child_list = card_lists.nth(1)
+            logger.warning("未找到两组卡片列表，仅找到 %d 组，终止抓取", total_lists)
+            return
 
-        parent_cards = parent_list.locator(".statistic-card-wrapper.could-selected")
-        parent_total = await parent_cards.count()
-        logger.info("共找到 %d 个父卡片", parent_total)
+        parent_list = card_lists.nth(0)
+        child_list  = card_lists.nth(1)
 
-        child_cards = child_list.locator(".statistic-card-wrapper.could-selected") if child_list else None
-        child_total = await child_cards.count() if child_cards else 0
-        logger.info("共找到 %d 个子卡片", child_total)
+        # 打印本次将处理的父/子卡片清单
+        print(f"[父卡片] 共 {len(PARENT_CARD_NAMES)} 个：{list(PARENT_CARD_NAMES)}")
+        print(f"[子卡片] 共 {len(CHILD_CARD_NAMES)} 个：{list(CHILD_CARD_NAMES)}")
+        logger.info("父卡片：%s", PARENT_CARD_NAMES)
+        logger.info("子卡片：%s", CHILD_CARD_NAMES)
 
-        for pi in range(parent_total):
-            parent_card = parent_cards.nth(pi)
-            parent_title = await parent_card.locator(".statistic-card-title").inner_text()
-            await parent_card.click()
+        parent_count = len(PARENT_CARD_NAMES)
+        child_count  = len(CHILD_CARD_NAMES)
+
+        for pi, parent_name in enumerate(PARENT_CARD_NAMES):
+            filter_labels = PARENT_FILTER_MAP[parent_name]   # 固定两个筛选项
+            filter_count  = len(filter_labels)
+
+            print(
+                f"\n[父卡片 {pi + 1}/{parent_count}]「{parent_name}」"
+                f" | 筛选项({filter_count})：{list(filter_labels)}"
+                f" | 子卡片({child_count})：{list(CHILD_CARD_NAMES)}"
+            )
             logger.info(
-                "[父 %d/%d] 已点击父卡片「%s」，开始依次切换 %d 个子卡片（预计等待 %ds）...",
-                pi + 1, parent_total, parent_title, child_total, child_total * 30,
+                "[父 %d/%d]「%s」筛选项：%s，子卡片：%s",
+                pi + 1, parent_count, parent_name, filter_labels, CHILD_CARD_NAMES,
             )
 
-            if child_total == 0:
-                await asyncio.sleep(30)
-                continue
+            # 在父卡片列表中按文字定位并点击
+            parent_card = parent_list.locator(
+                f".statistic-card-wrapper:has(.statistic-card-title:has-text('{parent_name}'))"
+            )
+            await parent_card.scroll_into_view_if_needed()
+            await parent_card.click()
 
-            for ci in range(child_total):
-                # 灵犀的页面渲染很卡很慢，等他渲染完毕再找卡片抓数据
-                await asyncio.sleep(30)
-                child_card = child_cards.nth(ci)
-                child_title = await child_card.locator(".statistic-card-title").inner_text()
-                await child_card.click()
-                logger.info(
-                    "  [子 %d/%d] 已点击子卡片「%s」，等待10s 抓取数据...",
-                    ci + 1, child_total, child_title,
+            # 等待页面稳定后开始筛选项循环
+            await asyncio.sleep(10)
+
+            # 第一组 segment-control 容器（页面可能有多组，只处理第一组）
+            first_segment = page.locator('[style*="segment-control-padding"]').first
+
+            for fi, filter_label in enumerate(filter_labels):
+                if fi == 0:
+                    # 第一个筛选项默认已选中，无需点击
+                    print(
+                        f"  [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
+                        f"「{filter_label}」默认选中，开始抓取子卡片..."
+                    )
+                    logger.info(
+                        "  [父 %d/%d][筛选 %d/%d]「%s」默认选中，开始抓取子卡片...",
+                        pi + 1, parent_count, fi + 1, filter_count, filter_label,
+                    )
+                else:
+                    # 在第一组 segment-control 内按文字点击目标筛选项
+                    filter_item = first_segment.locator(f'.d-segment-item:has-text("{filter_label}")')
+                    await filter_item.click()
+                    print(
+                        f"  [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
+                        f"「{filter_label}」已切换，等待20s 数据刷新..."
+                    )
+                    logger.info(
+                        "  [父 %d/%d][筛选 %d/%d]「%s」已切换，等待20s 数据刷新...",
+                        pi + 1, parent_count, fi + 1, filter_count, filter_label,
+                    )
+                    await asyncio.sleep(20)
+
+                for ci, child_name in enumerate(CHILD_CARD_NAMES):
+                    # 灵犀页面渲染较慢，先等待再操作
+                    await asyncio.sleep(20)
+
+                    # 在子卡片列表中按文字定位
+                    child_card = child_list.locator(
+                        f".statistic-card-wrapper:has(.statistic-card-title:has-text('{child_name}'))"
+                    )
+                    await child_card.click()
+                    print(
+                        f"    [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
+                        f"[子 {ci + 1}/{child_count}]「{child_name}」已点击，等待10s 抓取数据..."
+                    )
+                    logger.info(
+                        "  [父 %d/%d][筛选 %d/%d][子 %d/%d]「%s」已点击，等待10s 抓取数据...",
+                        pi + 1, parent_count, fi + 1, filter_count, ci + 1, child_count, child_name,
+                    )
+                    await asyncio.sleep(10)
+
+                print(
+                    f"  [父 {pi + 1}/{parent_count}][筛选 {fi + 1}/{filter_count}]"
+                    f"「{filter_label}」所有子卡片抓取完毕"
                 )
-                # 抓取数据
-                await asyncio.sleep(10)
+                logger.info(
+                    "  [父 %d/%d][筛选 %d/%d]「%s」所有子卡片抓取完毕",
+                    pi + 1, parent_count, fi + 1, filter_count, filter_label,
+                )
 
-            logger.info("[父 %d/%d] 父卡片「%s」下所有子卡片抓取完毕", pi + 1, parent_total, parent_title)
+            print(f"[父卡片 {pi + 1}/{parent_count}]「{parent_name}」所有筛选条件抓取完毕")
+            logger.info("[父 %d/%d]「%s」所有筛选条件抓取完毕", pi + 1, parent_count, parent_name)
 
+        print("\n所有父/子卡片点击完毕，数据抓取结束。")
         logger.info("所有父/子卡片点击完毕，数据抓取结束。")
         # await browser.close()
 
@@ -226,4 +346,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, handlers=[_handler])
 
     print(f"日志输出至: {log_path.resolve()}")
-    asyncio.run(run())
+    asyncio.run(run(headless=False))

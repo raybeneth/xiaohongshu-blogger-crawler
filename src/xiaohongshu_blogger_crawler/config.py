@@ -54,6 +54,7 @@ class Settings:
         "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     )
     cookie: str = os.getenv("XHS_COOKIE", "").strip()
+    link_x_cookie: str = os.getenv("LINKX_COOKIE", "")
     request_timeout: float = float(os.getenv("XHS_REQUEST_TIMEOUT", "15"))
     request_interval_seconds: float = float(os.getenv("XHS_REQUEST_INTERVAL_SECONDS", "1.5"))
     output_dir: Path = Path(os.getenv("XHS_OUTPUT_DIR", "data"))
@@ -72,6 +73,8 @@ class Settings:
     # website抓取配置账号
     link_x_account = os.getenv("LINKX_ACCOUNT", "")
     link_x_password = os.getenv("LINKX_PASSWORD", "")
+    # 自动登录开关：True=模拟登录，False=使用 Cookie
+    link_x_auto_login: bool = os.getenv("LINKX_AUTO_LOGIN", "true").strip().lower() in ("1", "true", "yes")
 
     def blogger_profile_url(self, blogger_id: str) -> str:
         clean_id = blogger_id.strip()
