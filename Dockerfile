@@ -17,6 +17,9 @@ RUN mkdir -p data
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 8000
+ENV DASHBOARD_HOST=0.0.0.0
+ENV DASHBOARD_PORT=8000
 
-CMD ["xhs-crawler", "serve", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE ${DASHBOARD_PORT}
+
+CMD xhs-crawler dashboard --host ${DASHBOARD_HOST} --port ${DASHBOARD_PORT}
