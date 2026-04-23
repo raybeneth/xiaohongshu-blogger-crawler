@@ -1,28 +1,242 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>部署调度管理</title>
-  <link rel="stylesheet" href="/static/css/dashboard.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>红盘部署运维后端</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
 
 <!-- sidebar -->
 <div class="sidebar">
-  <div class="sidebar-title">部署调度管理</div>
-  <div class="menu-item active" data-page="subscription-list" onclick="switchPage(this)">品牌订阅列表</div>
+    <div class="sidebar-title">红盘部署运维后端</div>
+    <div class="menu-item active" data-page="subscription-list" onclick="switchPage(this)">品牌订阅列表</div>
+    <div class="menu-item" data-page="script-exec" onclick="switchPage(this)">品牌脚本执行</div>
+    <div class="menu-item" data-page="sys-config" onclick="switchPage(this)">红盘系统配置</div>
+    <div class="menu-item" data-page="clean-monitor" onclick="switchPage(this)">每日清洗监控</div>
+    <div class="menu-item" data-page="parquet-parser" onclick="switchPage(this)">Parquet文件解析</div>
 </div>
 
 <!-- main content -->
 <div class="main">
 
-  <!-- page: subscription list -->
-  <div id="page-subscription-list" class="page">
-    <h2>品牌订阅列表</h2>
-    <div id="table-wrap"></div>
-  </div>
+    <!-- page: subscription list -->
+    <div id="page-subscription-list" class="page">
+        <div class="page-header">
+            <h2>品牌订阅列表</h2>
+            <button class="btn btn-primary" onclick="openContractModal()">新增合约</button>
+        </div>
+        <div class="page-tip">该列表展示现有客户的订阅状态，同时新品牌可以在此处快速录入部署。</div>
+        <div id="table-wrap"></div>
+    </div>
 
+    <!-- page: script execution -->
+    <div id="page-script-exec" class="page" style="display:none">
+        <h2>品牌脚本执行</h2>
+        <div class="page-tip">该页面用于品牌分析库的脚本执行，类似于现有红盘运维端的功能（切勿执行高危语句）。操作步骤：选择品牌 -> 编写SQL脚本 -> 配置占位符参数 -> 提交执行。</div>
+        <div class="page-tip"></div>
+
+        <div class="script-toolbar">
+            <div class="form-group" style="margin-bottom:0;min-width:280px">
+                <label>选择品牌</label>
+                <select id="script-brand-select">
+                    <option value="">-- 请选择品牌 --</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tpl-bar" style="margin-top:16px">
+            <div class="tpl-btns" id="tpl-btns"></div>
+        </div>
+
+        <div class="form-group" style="margin-top:8px">
+            <label>SQL 脚本 <span class="hint">（支持多条语句，使用 <code>#{xxx}</code> 作为占位符）</span></label>
+            <textarea id="script-sql" class="sql-textarea"
+                      placeholder="select * from #{tableName} where platform = #{platform} limit 10;">select * from #{tableName} where platform = #{platform} limit 10;</textarea>
+        </div>
+
+        <div id="placeholder-section" style="display:none;margin-top:16px">
+            <div class="form-section-title">占位符替换</div>
+            <div id="placeholder-list" class="form-grid">
+                <div class="form-group">
+                    <label><code>#{tableName}</code></label>
+                    <input data-ph="tableName" value="nx_ecrp_order">
+                </div>
+                <div class="form-group">
+                    <label><code>#{shopId}</code></label>
+                    <input data-ph="platform" value="0">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:20px">
+            <button class="btn btn-primary" id="btn-exec-script" onclick="submitScript()">提交执行</button>
+        </div>
+
+        <div id="script-result" style="margin-top:16px"></div>
+    </div>
+
+    <!-- page: clean monitor -->
+    <div id="page-clean-monitor" class="page" style="display:none">
+        <div class="page-header">
+            <h2>每日清洗监控（中间表清洗进度）</h2>
+            <button class="btn btn-primary" onclick="loadCleanTasks()">刷新</button>
+        </div>
+        <div class="page-tip">该列表用于监控现有品牌中间表清洗进度，支持对执行失败的任务手动触发重试。</div>
+        <div id="clean-task-table-wrap"></div>
+    </div>
+
+    <!-- page: parquet parser -->
+    <div id="page-parquet-parser" class="page" style="display:none">
+        <h2>Parquet文件解析（数安港出港文件解析）</h2>
+        <div class="page-tip">该模块支持在线解析Parquet二进制压缩文件，便于研发排查数安港返回的归因结果数据。最大支持30M文件，且只解析展示前500行。</div>
+        <div class="parquet-upload-area">
+            <input type="file" id="parquet-file" accept=".parquet" style="display:none"
+                   onchange="handleParquetFile(this)">
+            <button class="btn btn-primary" onclick="document.getElementById('parquet-file').click()">选择 Parquet 文件</button>
+            <span id="parquet-file-name" class="hint" style="margin-left:12px">未选择文件（最大 30MB）</span>
+        </div>
+        <div id="parquet-meta" style="margin-top:12px"></div>
+        <div id="parquet-result" style="margin-top:16px"></div>
+    </div>
+
+    <!-- page: sys config -->
+    <div id="page-sys-config" class="page" style="display:none">
+        <div class="page-header">
+            <h2>红盘系统配置</h2>
+            <button class="btn btn-primary" onclick="openSysConfigModal()">新增配置</button>
+        </div>
+        <div class="page-tip">该列表数据源自redpan_sys_config，便于研发快速维护系统配置信息（切勿随便删除或编辑任何配置）。</div>
+        <div id="sys-config-table-wrap"></div>
+    </div>
+
+</div>
+
+<!-- modal: sys config add/edit -->
+<div id="sys-config-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content" style="width:600px">
+        <div class="modal-header">
+            <h3 id="sys-config-modal-title">新增配置</h3>
+            <span class="modal-close" onclick="closeSysConfigModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="sys-config-form" onsubmit="return false">
+                <input type="hidden" name="id" value="">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>编码 (code) *</label>
+                        <input name="code" required>
+                    </div>
+                    <div class="form-group">
+                        <label>配置类型 *</label>
+                        <select name="type" required>
+                            <option value="0">系统基础配置</option>
+                            <option value="1">运维系统配置</option>
+                            <option value="2">业务必须配置（常用）</option>
+                            <option value="3">非必须配置</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label>配置值 (value) *</label>
+                        <textarea name="value" required style="min-height:80px"></textarea>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label>配置说明</label>
+                        <input name="remark">
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-stop" onclick="closeSysConfigModal()">取消</button>
+            <button class="btn btn-primary" id="btn-submit-sys-config" onclick="submitSysConfig()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- modal: create contract -->
+<div id="contract-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>新增合约</h3>
+            <span class="modal-close" onclick="closeContractModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="contract-form" onsubmit="return false">
+
+                <!-- Section 1 -->
+                <div class="form-section-title">产品配置信息</div>
+                <div class="form-grid">
+                    <div class="form-group"><label>公司ID *</label><input name="group_id" type="number" required></div>
+                    <div class="form-group"><label>公司名称 *</label><input name="group_name" required></div>
+                    <div class="form-group"><label>品牌ID *</label><input name="brand_id" type="number" required></div>
+                    <div class="form-group"><label>品牌名称 *</label><input name="brand_name" required></div>
+                    <div class="form-group">
+                        <label>品牌版本 *</label>
+                        <select name="brand_version" required>
+                            <option value="MINI">MINI</option>
+                            <option value="STAND">STAND</option>
+                            <option value="PRO">PRO</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>合约版本 *</label>
+                        <select name="versions" required>
+                            <option value="0">年费版本</option>
+                            <option value="1">报告版本</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>体系ID *</label><input name="view_id" required></div>
+                    <div class="form-group"><label>店铺ID *</label><input name="shop_id" placeholder="仅展示，不入库"
+                                                                          required></div>
+                    <div class="form-group"><label>合约授权码 *</label><input name="auth_code" required></div>
+                    <div class="form-group"><label>授权手机号 *</label><input name="counselor_mobile" required></div>
+                    <div class="form-group"><label>合约负责人 *</label><input name="counselor" required></div>
+                    <div class="form-group"><label>抽样比例(%) *</label><input name="sampling_proportion" type="number"
+                                                                               value="100" min="0" max="100" required>
+                    </div>
+                    <div class="form-group"><label>合同开始时间 *</label><input name="contract_start_time" type="date"
+                                                                                required></div>
+                    <div class="form-group"><label>合同结束时间 *</label><input name="contract_end_time" type="date"
+                                                                                required></div>
+                    <div class="form-group"><label>数据开始时间 *</label><input name="data_start_time" type="date"
+                                                                                required></div>
+                    <div class="form-group"><label>数据结束时间 *</label><input name="data_end_time" type="date"
+                                                                                required></div>
+                    <div class="form-group"><label>Doris库地址 *</label><input name="doris_url" required></div>
+                    <div class="form-group"><label>Doris库名 *</label><input name="doris_database" required></div>
+                    <div class="form-group"><label>Doris账号 *</label><input name="doris_account" required></div>
+                    <div class="form-group"><label>Doris密码(密文) *</label><input name="doris_password" required></div>
+                    <div class="form-group"><label>MA分析数据库名称 *</label><input name="ma_doris_database" required>
+                    </div>
+                </div>
+
+                <!-- Section 2 -->
+                <div class="form-section-title">红书配置信息</div>
+                <div class="form-grid">
+                    <div class="form-group"><label>小红书品牌ID *</label><input name="xhs_brand_id" type="number"
+                                                                                required></div>
+                </div>
+
+                <!-- Section 3 -->
+                <div class="form-section-title">数安港配置信息</div>
+                <div class="form-grid">
+                    <div class="form-group"><label>数安港应用ID *</label><input name="use_code" required></div>
+                    <div class="form-group"><label>接口密钥 *</label><input name="mpc_secret" required></div>
+                    <div class="form-group"><label>业务配置名称 *</label><input name="busi_config_name" required></div>
+                    <div class="form-group"><label>业务配置ID *</label><input name="busi_config_id" required></div>
+                    <div class="form-group"><label>Hive库名 *</label><input name="hive_database" required></div>
+                    <div class="form-group"><label>合约标识 *</label><input name="contract_code" required></div>
+                </div>
+
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-stop" onclick="closeContractModal()">取消</button>
+            <button class="btn btn-primary" id="btn-submit-contract" onclick="submitContract()">提交</button>
+        </div>
+    </div>
 </div>
 
 <script src="/static/js/dashboard.js"></script>
