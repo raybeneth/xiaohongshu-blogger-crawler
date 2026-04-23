@@ -22,4 +22,4 @@ ENV DASHBOARD_PORT=8000
 
 EXPOSE ${DASHBOARD_PORT}
 
-CMD xhs-crawler dashboard --host ${DASHBOARD_HOST} --port ${DASHBOARD_PORT}
+CMD ["sh", "-c", "xhs-crawler dashboard --host ${DASHBOARD_HOST} --port ${DASHBOARD_PORT}"]
