@@ -16,6 +16,11 @@
     <div class="menu-item" data-page="sys-config" onclick="switchPage(this)">红盘系统配置</div>
     <div class="menu-item" data-page="clean-monitor" onclick="switchPage(this)">每日清洗监控</div>
     <div class="menu-item" data-page="parquet-parser" onclick="switchPage(this)">Parquet文件解析</div>
+    <div class="sidebar-user">
+        <svg class="user-avatar" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" fill="currentColor"/></svg>
+        <span class="user-name" id="sidebar-username">admin</span>
+        <svg class="logout-icon" onclick="doLogout()" title="退出登录" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
 </div>
 
 <!-- main content -->

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from xiaohongshu_blogger_crawler.dashboard.database import close_pool, init_pool
@@ -41,6 +44,74 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="部署调度管理", version="0.1.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+_DASH_USER = os.getenv("DASHBOARD_USERNAME", "admin")
+_DASH_PASS = os.getenv("DASHBOARD_PASSWORD", "admin")
+_SESSION_TTL = 3600  # 1 hour
+
+# token -> expiry timestamp
+_sessions: dict[str, float] = {}
+
+_LOGIN_HTML = (_TEMPLATES_DIR / "login.html").read_text(encoding="utf-8") \
+    if (_TEMPLATES_DIR / "login.html").exists() else ""
+
+_PUBLIC_PATHS = {"/login", "/api/login", "/api/logout"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    # 静态资源和登录页放行
+    if path.startswith("/static") or path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    token = request.cookies.get("dash_token", "")
+    if token and token in _sessions and _sessions[token] > time.time():
+        return await call_next(request)
+
+    # token 过期则清理
+    if token in _sessions:
+        del _sessions[token]
+
+    # API 请求返回 401 JSON
+    if path.startswith("/api/"):
+        return JSONResponse({"ok": False, "msg": "未登录或会话已过期"}, status_code=401)
+    # 页面请求重定向到登录页
+    return RedirectResponse("/login")
+
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_page() -> HTMLResponse:
+    return HTMLResponse(content=_LOGIN_HTML)
+
+
+@app.post("/api/login")
+async def api_login(request: Request) -> JSONResponse:
+    data = await request.json()
+    username = data.get("username", "")
+    password = data.get("password", "")
+    if username == _DASH_USER and password == _DASH_PASS:
+        token = secrets.token_hex(32)
+        _sessions[token] = time.time() + _SESSION_TTL
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie("dash_token", token, max_age=_SESSION_TTL, httponly=True, samesite="lax")
+        return resp
+    return JSONResponse({"ok": False, "msg": "账号或密码错误"})
+
+
+@app.post("/api/logout")
+async def api_logout(request: Request) -> JSONResponse:
+    token = request.cookies.get("dash_token", "")
+    if token in _sessions:
+        del _sessions[token]
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("dash_token")
+    return resp
+
 
 # ---------------------------------------------------------------------------
 # Pages

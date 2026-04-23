@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 红盘运维管理后端</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .login-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,.08);
+            padding: 40px 36px;
+            width: 360px;
+        }
+        .login-card h2 {
+            text-align: center;
+            color: #ff2442;
+            font-size: 20px;
+            margin-bottom: 28px;
+        }
+        .login-card label {
+            display: block;
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 6px;
+        }
+        .login-card input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color .2s;
+            margin-bottom: 16px;
+        }
+        .login-card input:focus { border-color: #ff2442; }
+        .login-btn {
+            width: 100%;
+            padding: 11px;
+            background: #ff2442;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .login-btn:hover { background: #e01f3a; }
+        .login-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .login-msg {
+            margin-top: 12px;
+            text-align: center;
+            font-size: 13px;
+            color: #cc0000;
+        }
+    </style>
+</head>
+<body>
+<div class="login-card">
+    <h2>红盘运维管理后端</h2>
+    <label>账号</label>
+    <input type="text" id="login-user" placeholder="请输入账号" autofocus>
+    <label>密码</label>
+    <input type="password" id="login-pass" placeholder="请输入密码">
+    <button class="login-btn" id="login-btn" onclick="doLogin()">登 录</button>
+    <div class="login-msg" id="login-msg"></div>
+</div>
+<script>
+    document.getElementById('login-pass').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('login-user').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') document.getElementById('login-pass').focus();
+    });
+
+    async function doLogin() {
+        const user = document.getElementById('login-user').value.trim();
+        const pass = document.getElementById('login-pass').value;
+        const msg = document.getElementById('login-msg');
+        const btn = document.getElementById('login-btn');
+        if (!user || !pass) { msg.textContent = '请输入账号和密码'; return; }
+
+        btn.disabled = true;
+        msg.textContent = '';
+        try {
+            const resp = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass }),
+            });
+            const result = await resp.json();
+            if (result.ok) {
+                window.location.href = '/';
+            } else {
+                msg.textContent = result.msg || '登录失败';
+            }
+        } catch (e) {
+            msg.textContent = '请求失败：' + e;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+</script>
+</body>
+</html>

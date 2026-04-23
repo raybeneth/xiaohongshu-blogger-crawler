@@ -1,3 +1,23 @@
+// ---- auth: intercept 401 and redirect to login ----
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const resp = await _origFetch(...args);
+  if (resp.status === 401) {
+    window.location.href = '/login';
+    return resp;
+  }
+  return resp;
+};
+
+// ---- logout ----
+async function doLogout() {
+  if (!confirm('确认退出登录？')) return;
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch (_) {}
+  window.location.href = '/login';
+}
+
 // ---- page switching ----
 function switchPage(el) {
   document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
@@ -188,7 +208,7 @@ async function loadScriptPage() {
     sel.innerHTML = '<option value="">-- 请选择品牌 --</option>';
     _brandList.forEach(s => {
       const name = s.brand_name || s.contract_code || '未知';
-      sel.innerHTML += `<option value="${s.brand_id}">${esc(name)} (品牌ID: ${s.brand_id})</option>`;
+      sel.innerHTML += `<option value="${s.brand_id}">${esc(name)} (${s.brand_id})</option>`;
     });
   } catch (e) {
     sel.innerHTML = '<option value="">加载失败</option>';

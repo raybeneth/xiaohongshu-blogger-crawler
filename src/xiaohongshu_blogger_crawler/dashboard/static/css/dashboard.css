@@ -47,6 +47,48 @@ body {
   font-weight: 600;
 }
 
+/* ===== sidebar user ===== */
+.sidebar-user {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  color: #bbb;
+  background: #f0f0f0;
+  border-radius: 50%;
+  padding: 3px;
+  flex-shrink: 0;
+}
+
+.user-name {
+  font-size: 13px;
+  color: #555;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-icon {
+  width: 18px;
+  height: 18px;
+  color: #999;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.logout-icon:hover {
+  color: #ff2442;
+}
+
 /* ===== main content ===== */
 .main {
   flex: 1;
