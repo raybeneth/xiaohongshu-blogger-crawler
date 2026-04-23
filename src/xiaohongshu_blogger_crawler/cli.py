@@ -108,5 +108,26 @@ def dashboard(
     )
 
 
+@app.command("crowd-compare")
+def crowd_compare(
+    headless: bool = typer.Option(False, "--headless", help="Run browser in headless mode."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Open audience comparison page and randomly select two crowds."""
+    from xiaohongshu_blogger_crawler.browser.crowd_comparison import run
+
+    log_level = logging.DEBUG if verbose else logging.INFO
+    configure_logging(level=log_level)
+
+    log_path = Path("logs/crowd_comparison.log")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"))
+    logging.getLogger().addHandler(file_handler)
+    typer.echo(f"日志输出至: {log_path.resolve()}")
+
+    asyncio.run(run(headless=headless))
+
+
 if __name__ == "__main__":
     app()
