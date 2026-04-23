@@ -86,5 +86,27 @@ def serve(
     )
 
 
+@app.command()
+def dashboard(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
+    port: int = typer.Option(8001, "--port", "-p", help="Bind port."),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (dev mode)."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
+) -> None:
+    """Start the deploy-task dashboard server."""
+    import uvicorn
+
+    log_level = "debug" if verbose else "info"
+    configure_logging(level=logging.DEBUG if verbose else logging.INFO)
+    typer.echo(f"Starting dashboard at http://{host}:{port}")
+    uvicorn.run(
+        "xiaohongshu_blogger_crawler.dashboard.app:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level=log_level,
+    )
+
+
 if __name__ == "__main__":
     app()
