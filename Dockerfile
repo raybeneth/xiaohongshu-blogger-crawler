@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM nascent-registry.cn-zhangjiakou.cr.aliyuncs.com/ecrp/python:3.12.2
 
 WORKDIR /app
 
