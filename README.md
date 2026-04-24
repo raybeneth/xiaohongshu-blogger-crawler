@@ -13,9 +13,13 @@
 | Parquet 文件解析 | 上传并预览 Parquet 文件内容（最大 30MB，返回前 500 行） |
 
 <img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/148b4f49-9998-47c9-9420-5895f2ea8179" />
+
 <img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/beca7f09-f206-480c-a79b-5066a2bc1fbe" />
+
 <img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/f0245a26-6f88-4934-aaf2-a383dca9e034" />
+
 <img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/ee8f96e5-66ec-40ad-90c1-c0920d849e62" />
+
 <img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/f53b361e-e67b-45a6-9866-bd398009998b" />
 
 
