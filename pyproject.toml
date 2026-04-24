@@ -45,6 +45,9 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"xiaohongshu_blogger_crawler" = ["dashboard/static/**/*", "dashboard/templates/**/*"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
